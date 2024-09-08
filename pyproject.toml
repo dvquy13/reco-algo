@@ -15,6 +15,8 @@ pandas = "^2.2.2"
 loguru = "^0.7.2"
 python-dotenv = "^1.0.1"
 datasets = "^2.21.0"
+plotly = "^5.24.0"
+pydantic = "^2.9.0"
 
 
 [tool.poetry.group.dev.dependencies]
