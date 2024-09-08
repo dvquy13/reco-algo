@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from src.dataset_loader import UserItemRatingDataset
+
 
 class LightGCN(nn.Module):
     def __init__(
@@ -9,7 +11,7 @@ class LightGCN(nn.Module):
         n_layers,
         user_ids,
         item_ids,
-        interaction_scores=None,
+        ratings=None,
         dropout_rate=0.5,
         device="cpu",  # Added device argument with default to 'cpu'
     ):
@@ -20,7 +22,7 @@ class LightGCN(nn.Module):
             n_layers (int): Number of propagation layers
             user_ids (list or tensor): List of user indices
             item_ids (list or tensor): List of item indices
-            interaction_scores (list or tensor, optional): Interaction scores (binary or weighted)
+            ratings (list or tensor, optional): Interaction scores (binary or weighted)
             device (str or torch.device, optional): The device to run computations on ('cpu' or 'cuda').
         """
         super(LightGCN, self).__init__()
@@ -40,27 +42,25 @@ class LightGCN(nn.Module):
         nn.init.normal_(self.item_embedding.weight, std=0.1)
 
         # Build adjacency matrix from user-item interactions
-        self.adj_matrix = self.build_adj_matrix(
-            user_ids, item_ids, interaction_scores
-        ).to(
+        self.adj_matrix = self.build_adj_matrix(user_ids, item_ids, ratings).to(
             "cpu"
         )  # Move to CPU due to sheer big size
 
         # Softplus function for BPR loss
         self.softplus = nn.Softplus().to(self.device)
 
-    def build_adj_matrix(self, user_ids, item_ids, interaction_scores):
+    def build_adj_matrix(self, user_ids, item_ids, ratings):
         """
         Build the sparse adjacency matrix from user-item interactions.
         Args:
             user_ids (list or tensor): User indices for each interaction
             item_ids (list or tensor): Item indices for each interaction
-            interaction_scores (list or tensor, optional): Interaction scores (optional, binary if None)
+            ratings (list or tensor, optional): Ratings (optional, binary if None)
         Returns:
             adj_matrix (torch.sparse.FloatTensor): Symmetrically normalized sparse adjacency matrix
         """
-        if interaction_scores is None:
-            interaction_scores = torch.ones(
+        if ratings is None:
+            ratings = torch.ones(
                 len(user_ids)
             )  # Default to binary interactions if no scores are provided
 
@@ -72,9 +72,7 @@ class LightGCN(nn.Module):
         item_tensor = (
             torch.tensor(item_ids, dtype=torch.long, device=self.device) + self.n_users
         )  # Shift item indices by n_users
-        score_tensor = torch.tensor(
-            interaction_scores, dtype=torch.float32, device=self.device
-        )
+        score_tensor = torch.tensor(ratings, dtype=torch.float32, device=self.device)
 
         # Create user-item interaction edges (user-to-item and item-to-user)
         indices = torch.cat([user_tensor.unsqueeze(0), item_tensor.unsqueeze(0)], dim=0)
@@ -167,3 +165,18 @@ class LightGCN(nn.Module):
         """
         user_emb, item_emb = self.forward(users, items)
         return torch.sum(user_emb * item_emb, dim=1)
+
+    def predict_train_batch(self, batch_input: dict, device: str = "cpu"):
+        users = batch_input["user"]
+        items = batch_input["item"]
+
+        users = users.to(device)
+        items = items.to(device)
+
+        predictions = self.predict(users, items)
+
+        return predictions
+
+    @classmethod
+    def get_expected_dataset_type(cls):
+        return UserItemRatingDataset

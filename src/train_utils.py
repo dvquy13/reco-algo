@@ -60,13 +60,14 @@ def train(
     progress_bar_type="tqdm",
     callbacks=[],
 ):
-
+    if (expected := model.get_expected_dataset_type()) != (
+        actual := type(dataloader.dataset)
+    ):
+        raise Exception(f"Expected dataset type {expected} but got {actual}")
     device = torch.device(device)
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, step_size=1000, gamma=0.9, verbose=True
-    )
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.9)
     best_val_loss = np.inf
     no_improvement_count = 0
     step = 0
@@ -88,16 +89,13 @@ def train(
             total=num_batches,
         )
 
-        for batch_idx, (users, items, ratings) in batch_iterator:
+        for batch_idx, batch_input in batch_iterator:
             step += 1
 
-            users = users.to(device)
-            items = items.to(device)
-            ratings = ratings.to(device)
-
+            ratings = batch_input["rating"]
             optimizer.zero_grad()
+            predictions = model.predict_train_batch(batch_input)
 
-            predictions = model.predict(users, items)
             loss = mse_loss(
                 predictions, ratings, l2_reg=None, model=model, device=device
             )
@@ -116,7 +114,7 @@ def train(
                 # Collect metric values
                 metric_log_payload = {"step": step, "dataset": "train"}
                 metric_log_payload["global_loss"] = total_loss / (batch_idx + 1)
-                metric_log_payload["learning_rate"] = optimizer.param_groups[0]["lr"]
+                metric_log_payload["learning_rate"] = scheduler.get_last_lr()[0]
                 gradient_metrics = log_gradients(model)
                 metric_log_payload.update(gradient_metrics)
 
@@ -145,12 +143,9 @@ def train(
             model.eval()
             val_loss = 0
             with torch.no_grad():
-                for users, items, ratings in val_dataloader:
-                    users = users.to(device)
-                    items = items.to(device)
-                    ratings = ratings.to(device)
-
-                    predictions = model.predict(users, items)
+                for batch_input in val_dataloader:
+                    ratings = batch_input["rating"]
+                    predictions = model.predict_train_batch(batch_input)
                     val_loss += mse_loss(
                         predictions, ratings, model=model, device=device
                     ).item()
