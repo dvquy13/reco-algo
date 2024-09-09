@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import torch
 import torch.optim as optim
@@ -77,7 +79,11 @@ def train(
     else:
         from tqdm import tqdm
 
+    stop_training = False
+    total_train_time = 0  # To track the total time
     for epoch in tqdm(range(epochs), desc="Epochs", position=0):
+        epoch_start_time = time.time()  # Start time for this epoch
+
         model.train()
         total_loss = 0
         num_batches = len(dataloader)
@@ -163,7 +169,21 @@ def train(
 
                 if no_improvement_count >= patience:
                     logger.info(f"Early stopping at epoch {epoch + 1}")
-                    break
+                    stop_training = True
+
+        # Log the time taken for this epoch
+        epoch_time = time.time() - epoch_start_time
+        total_train_time += epoch_time
+        logger.info(f"Epoch {epoch + 1} time: {epoch_time:.2f} seconds")
 
         for callback in callbacks:
             callback(epoch_metric_log_payload)
+
+        if stop_training:
+            break
+
+    # Log the total training time
+    logger.info(f"Total training time: {total_train_time:.2f} seconds")
+    logger.info(
+        f"Average training time per epoch: {total_train_time / (epoch + 1):.2f} seconds"
+    )
