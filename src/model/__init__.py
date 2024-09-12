@@ -1,3 +1,4 @@
+from .cf_u2u import User2UserCollaborativeFiltering
 from .lightgcn import LightGCN
 from .linear_regression import LinearRegressionRatingPredictor
 from .mf import MatrixFactorization
