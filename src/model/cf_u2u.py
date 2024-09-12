@@ -27,7 +27,7 @@ class User2UserCollaborativeFiltering:
         user_ratings = user_ratings[rated_mask]
 
         if len(sim_scores) == 0 or sim_scores.sum() == 0:
-            return 0  # If no users have rated the item, return 0
+            return 3  # If no users have rated the item, return neutral rating
 
         # Step 1: Find the top N most similar users
         if len(sim_scores) > top_n:

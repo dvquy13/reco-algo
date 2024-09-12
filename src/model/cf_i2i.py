@@ -27,7 +27,7 @@ class Item2ItemCollaborativeFiltering:
         item_ratings = item_ratings[rated_mask]
 
         if len(sim_scores) == 0 or sim_scores.sum() == 0:
-            return 0  # If no similar items are rated by the user, return 0
+            return 3  # If no similar items are rated by the user, return neutral rating
 
         # Step 1: Find the top N most similar items
         if len(sim_scores) > top_n:
