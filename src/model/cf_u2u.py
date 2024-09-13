@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from tqdm import tqdm, tqdm_notebook
 
 
 class User2UserCollaborativeFiltering:
@@ -66,3 +67,68 @@ class User2UserCollaborativeFiltering:
         )
 
         return predictions
+
+    def recommend(self, users, k, top_n=10, progress_bar_type="tqdm"):
+        """
+        Generate top k item recommendations with scores for each user in the provided list.
+
+        Parameters:
+        - users: List or array of user IDs for whom to generate recommendations.
+        - k: Number of top recommendations to return for each user.
+        - top_n: Number of top similar users to consider when predicting scores.
+        - progress_bar_type: Type of progress bar to use ('tqdm' or 'tqdm_notebook').
+
+        Returns:
+        - recommendations_dict: A flattened dictionary containing:
+            {
+                "user_indices": [user1, user1, user2, user2, ...],
+                "recommendations": [item1, item2, item3, item4, ...],
+                "scores": [score1, score2, score3, score4, ...]
+            }
+        """
+        # Select the appropriate tqdm function based on progress_bar_type
+        if progress_bar_type == "tqdm":
+            progress_bar = tqdm
+        elif progress_bar_type == "tqdm_notebook":
+            progress_bar = tqdm_notebook
+        else:
+            raise ValueError(
+                "progress_bar_type must be either 'tqdm' or 'tqdm_notebook'"
+            )
+
+        user_indices = []
+        all_recommendations = []
+        all_scores = []
+
+        for user in progress_bar(users, desc="Generating Recommendations"):
+            # Find items not yet rated by the user
+            unrated_items = np.where(self.user_item_matrix[user, :] == 0)[0]
+
+            if len(unrated_items) == 0:
+                # If the user has rated all items, skip to next user
+                continue
+
+            # Predict scores for all unrated items
+            predicted_scores = []
+            for item in unrated_items:
+                score = self.forward(user, item, top_n=top_n)
+                score = float(score)
+                predicted_scores.append((item, score))
+
+            # Sort the predicted scores in descending order and select top k
+            top_k = sorted(predicted_scores, key=lambda x: x[1], reverse=True)[:k]
+
+            # Append to the flattened lists
+            for item, score in top_k:
+                user_indices.append(user)
+                all_recommendations.append(item)
+                all_scores.append(score)
+
+        # Assemble the final dictionary
+        recommendations_dict = {
+            "user_indice": user_indices,
+            "recommendation": all_recommendations,
+            "score": all_scores,
+        }
+
+        return recommendations_dict

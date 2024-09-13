@@ -2,6 +2,7 @@ from typing import List
 
 import plotly.graph_objects as go
 import plotly.io as pio
+from evidently.options import ColorOptions
 from pydantic import BaseModel
 
 
@@ -42,3 +43,11 @@ blueq_template = go.layout.Template(
 
 pio.templates["blueq"] = blueq_template
 pio.templates.default = "blueq"
+
+color_scheme = ColorOptions(
+    primary_color=blueq_colors.main,
+    fill_color="#fff4f2",
+    zero_line_color="#016795",
+    current_data_color=blueq_colors.main,
+    reference_data_color=blueq_colors.others[0],
+)
