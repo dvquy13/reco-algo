@@ -1,9 +1,42 @@
 import time
 
+import mlflow
 import numpy as np
 import torch
 import torch.optim as optim
 from loguru import logger
+
+
+class MLflowLogCallback:
+    def __init__(self):
+        pass
+
+    def process_payload(self, payload: dict):
+        step = payload.get("step", None)
+        dataset = payload.get("dataset", None)
+
+        if dataset == "train":
+            mlflow.log_metric("train_global_loss", payload["global_loss"], step=step)
+            mlflow.log_metric("learning_rate", payload["learning_rate"], step=step)
+            if "total_grad_norm" in payload:
+                mlflow.log_metric(
+                    "total_grad_norm", payload["total_grad_norm"], step=step
+                )
+            for key, value in payload.items():
+                if key.startswith("grad_norm_"):
+                    mlflow.log_metric(key, value, step=step)
+
+        # Log validation loss at epoch level
+        if "val_loss" in payload:
+            mlflow.log_metric(
+                "val_loss", payload["val_loss"], step=payload.get("epoch", 0)
+            )
+
+        # Log epoch-level metrics for training loss
+        if "train_loss" in payload:
+            mlflow.log_metric(
+                "train_loss", payload["train_loss"], step=payload.get("epoch", 0)
+            )
 
 
 class MetricLogCallback:
