@@ -4,12 +4,12 @@ import torch.nn as nn
 from tqdm import tqdm
 from tqdm.notebook import tqdm_notebook
 
-from src.dataset_loader import UserItemRatingDataset
+from src.dataset_loader import UserItemRatingDataset, UserItemRatingPairwiseDataset
 
 
-class MatrixFactorization(nn.Module):
+class MatrixFactorizationPairwiseRanking(nn.Module):
     def __init__(self, num_users, num_items, embedding_dim, device):
-        super(MatrixFactorization, self).__init__()
+        super(MatrixFactorizationPairwiseRanking, self).__init__()
 
         self.device = device
 
@@ -40,19 +40,18 @@ class MatrixFactorization(nn.Module):
         return self.forward(users, items)
 
     def predict_train_batch(self, batch_input: dict, device: str = "cpu"):
-        users = batch_input["user"]
-        items = batch_input["item"]
+        users = batch_input["user_id"].to(device)
+        pos_items = batch_input["pos_item_id"].to(device)
+        neg_items = batch_input["neg_item_id"].to(device)
 
-        users = users.to(device)
-        items = items.to(device)
+        pos_predictions = self.predict(users, pos_items)
+        neg_predictions = self.predict(users, neg_items)
 
-        predictions = self.predict(users, items)
-
-        return predictions
+        return pos_predictions, neg_predictions
 
     @classmethod
     def get_expected_dataset_type(cls):
-        return UserItemRatingDataset
+        return UserItemRatingPairwiseDataset
 
     def recommend(self, users, k, top_n=10, progress_bar_type="tqdm"):
         """
@@ -68,9 +67,9 @@ class MatrixFactorization(nn.Module):
         Returns:
         - recommendations_dict: A flattened dictionary containing:
             {
-                "user_indices": [user1, user1, user1, ..., user2, user2, ...],
-                "recommendations": [item1, item2, item3, ..., item1, item2, ...],
-                "scores": [score1, score2, score3, ..., score1, score2, ...]
+                "user_indice": [user1, user1, user1, ..., user2, user2, ...],
+                "recommendation": [item1, item2, item3, ..., item1, item2, ...],
+                "score": [score1, score2, score3, ..., score1, score2, ...]
             }
         """
         # Select the appropriate tqdm function based on progress_bar_type
@@ -123,3 +122,20 @@ class MatrixFactorization(nn.Module):
         }
 
         return recommendations_dict
+
+
+class MatrixFactorizationRatingPrediction(MatrixFactorizationPairwiseRanking):
+    def predict_train_batch(self, batch_input: dict, device: str = "cpu"):
+        users = batch_input["user"]
+        items = batch_input["item"]
+
+        users = users.to(device)
+        items = items.to(device)
+
+        predictions = self.predict(users, items)
+
+        return predictions
+
+    @classmethod
+    def get_expected_dataset_type(cls):
+        return UserItemRatingDataset

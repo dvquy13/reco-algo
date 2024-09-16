@@ -1,4 +1,7 @@
+import torch
 from torch.utils.data import Dataset
+
+from src.loss import mse_loss
 
 
 class UserItemRatingDataset(Dataset):
@@ -25,4 +28,24 @@ class UserItemRatingDataset(Dataset):
         item_metadata = []
         if self.item_metadata is not None:
             item_metadata = self.item_metadata[idx]
-        return dict(user=user, item=item, rating=rating, item_metadata=item_metadata)
+        return dict(
+            user=torch.as_tensor(user),
+            item=torch.as_tensor(item),
+            rating=torch.as_tensor(rating),
+            item_metadata=torch.as_tensor(item_metadata) if item_metadata else [],
+        )
+
+    @classmethod
+    def get_default_loss_fn(cls):
+        loss_fn = mse_loss
+        return loss_fn
+
+    @classmethod
+    def forward(cls, model, batch_input, loss_fn=None, device="cpu"):
+        predictions = model.predict_train_batch(batch_input)
+        ratings = batch_input["rating"].to(device)
+
+        if loss_fn is None:
+            loss_fn = cls.get_default_loss_fn()
+        loss = loss_fn(predictions, ratings, l2_reg=None, model=model, device=device)
+        return loss

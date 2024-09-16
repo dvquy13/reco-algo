@@ -6,6 +6,8 @@ import torch
 import torch.optim as optim
 from loguru import logger
 
+from src.id_mapper import IDMapper
+
 
 class MLflowLogCallback:
     def __init__(self):
@@ -47,22 +49,6 @@ class MetricLogCallback:
         self.payloads.append(payload)
 
 
-def mse_loss(predictions, ratings, model, l2_reg=1e-5, device="cpu"):
-    predictions = predictions.to(device)
-    ratings = ratings.to(device)
-
-    mse_loss = torch.mean((predictions - ratings) ** 2)
-
-    if l2_reg:
-        l2_loss = 0
-        for param in model.parameters():
-            l2_loss += torch.norm(param) ** 2
-        total_loss = mse_loss + l2_reg * l2_loss
-    else:
-        total_loss = mse_loss
-    return total_loss
-
-
 def log_gradients(model):
     total_norm = 0
     param_count = 0
@@ -80,10 +66,24 @@ def log_gradients(model):
     return gradient_metrics
 
 
+def map_indice(df, idm: IDMapper, user_col="user_id", item_col="parent_asin"):
+    return df.assign(
+        **{
+            "user_indice": lambda df: df[user_col].apply(
+                lambda user_id: idm.get_user_index(user_id)
+            ),
+            "item_indice": lambda df: df[item_col].apply(
+                lambda item_id: idm.get_item_index(item_id)
+            ),
+        }
+    )
+
+
 def train(
     model,
     dataloader,
     val_dataloader=None,
+    loss_fn=None,  # The dataloader.dataset should implement default loss_fn
     early_stopping=True,
     patience=5,
     epochs=10,
@@ -95,10 +95,10 @@ def train(
     progress_bar_type="tqdm",
     callbacks=[],
 ):
-    if (expected := model.get_expected_dataset_type()) != (
+    if (dataset_type := model.get_expected_dataset_type()) != (
         actual := type(dataloader.dataset)
     ):
-        raise Exception(f"Expected dataset type {expected} but got {actual}")
+        raise Exception(f"Expected dataset type {dataset_type} but got {actual}")
     device = torch.device(device)
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
@@ -131,12 +131,9 @@ def train(
         for batch_idx, batch_input in batch_iterator:
             step += 1
 
-            ratings = batch_input["rating"]
             optimizer.zero_grad()
-            predictions = model.predict_train_batch(batch_input)
-
-            loss = mse_loss(
-                predictions, ratings, l2_reg=None, model=model, device=device
+            loss = dataset_type.forward(
+                model, batch_input, loss_fn=loss_fn, device=device
             )
 
             loss.backward()
@@ -183,11 +180,8 @@ def train(
             val_loss = 0
             with torch.no_grad():
                 for batch_input in val_dataloader:
-                    ratings = batch_input["rating"]
-                    predictions = model.predict_train_batch(batch_input)
-                    val_loss += mse_loss(
-                        predictions, ratings, model=model, device=device
-                    ).item()
+                    loss = dataset_type.forward(model, batch_input, device=device)
+                    val_loss += loss.item()
 
             val_loss /= len(val_dataloader)
             epoch_metric_log_payload["val_loss"] = val_loss

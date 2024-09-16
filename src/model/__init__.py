@@ -2,8 +2,11 @@ from .cf_i2i import Item2ItemCollaborativeFiltering
 from .cf_u2u import User2UserCollaborativeFiltering
 from .content_based import ContentBased
 from .lightgcn import LightGCN
-from .linear_regression import LinearRegressionRatingPredictor
-from .mf import MatrixFactorization
+from .linear_regression import (
+    LinearRegressionPairwiseRanking,
+    LinearRegressionRatingPrediction,
+)
+from .mf import MatrixFactorizationPairwiseRanking, MatrixFactorizationRatingPrediction
 from .sequence import SequenceRec
-from .two_tower import TwoTower
+from .two_tower import TwoTowerPairwiseRanking, TwoTowerRatingPrediction
 from .wide_and_deep import WideAndDeep
