@@ -3,7 +3,11 @@ import torch.nn as nn
 from tqdm import tqdm
 from tqdm.notebook import tqdm as tqdm_notebook
 
-from src.dataset_loader import UserItemRatingDataset, UserItemRatingPairwiseDataset
+from src.dataset_loader import (
+    UserItemRatingDataset,
+    UserItemRatingPairwiseDataset,
+    UserItemRatingPairwiseFullDataset,
+)
 
 
 class TwoTowerPairwiseRanking(nn.Module):
@@ -72,7 +76,7 @@ class TwoTowerPairwiseRanking(nn.Module):
 
     @classmethod
     def get_expected_dataset_type(cls):
-        return UserItemRatingPairwiseDataset
+        return UserItemRatingPairwiseFullDataset
 
     def recommend(self, users, k, batch_size=128, progress_bar_type="tqdm"):
         """
