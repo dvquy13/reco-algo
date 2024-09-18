@@ -112,7 +112,7 @@ class UserItemRatingPairwiseFullDataset(Dataset):
             neg_item_metadata = [self.item_metadata[i] for i in neg_sample_indices]
 
         return {
-            "user_id": torch.tensor(user_id, dtype=torch.long),
+            self.user_col: torch.tensor(user_id, dtype=torch.long),
             "pos_item_id": torch.tensor(pos_item, dtype=torch.long),
             "pos_item_metadata": torch.as_tensor(pos_item_metadata),
             "neg_item_ids": torch.tensor(neg_items, dtype=torch.long),
@@ -126,38 +126,29 @@ class UserItemRatingPairwiseFullDataset(Dataset):
 
     @classmethod
     def forward(cls, model, batch_input, loss_fn=None, device="cpu"):
-        user_ids = batch_input["user_id"].to(device)
-        pos_item_ids = batch_input["pos_item_id"].to(device)
-        neg_item_ids = batch_input["neg_item_ids"].to(device)
+        # Use model's predict_train_batch to get positive and negative predictions
+        pos_predictions, neg_predictions = model.predict_train_batch(batch_input)
+
+        # Move labels to the device
         labels = batch_input["labels"].to(device)
 
-        # Ensure that neg_item_ids and labels are 2D (batch_size x num_negative_samples)
-        if neg_item_ids.dim() == 1:
-            neg_item_ids = neg_item_ids.unsqueeze(1)
+        # Ensure labels and neg_predictions are flattened
         if labels.dim() == 1:
             labels = labels.unsqueeze(1)
-
-        pos_predictions = model.predict(user_ids, pos_item_ids)  # shape [batch_size]
-
-        # Expand pos_predictions to match the shape of neg_predictions
-        num_neg_samples = neg_item_ids.shape[1]
-        pos_predictions_expanded = (
-            pos_predictions.unsqueeze(1).expand(-1, num_neg_samples).reshape(-1)
-        )
-
-        # Flatten neg_item_ids and user_ids for batch prediction
-        user_ids_expanded = (
-            user_ids.unsqueeze(1).expand(-1, num_neg_samples).reshape(-1)
-        )
-        neg_item_ids_flat = neg_item_ids.reshape(-1)
-
-        neg_predictions_flat = model.predict(user_ids_expanded, neg_item_ids_flat)
-
         labels_flat = labels.reshape(-1)
+
+        neg_predictions_flat = neg_predictions.reshape(-1)
+
+        # Expand pos_predictions to match the shape of neg_predictions_flat
+        num_neg_samples = neg_predictions.shape[1]
+        pos_predictions_expanded = pos_predictions.expand(-1, num_neg_samples).reshape(
+            -1
+        )
 
         if loss_fn is None:
             loss_fn = cls.get_default_loss_fn()
 
+        # Compute the loss
         loss = loss_fn(pos_predictions_expanded, neg_predictions_flat, labels_flat)
 
         return loss
