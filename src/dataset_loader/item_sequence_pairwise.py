@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 
+from src.loss import bpr_loss
+
 
 class ItemSequencePairwiseDataset(Dataset):
     PADDING_VALUE = -1
@@ -18,6 +20,7 @@ class ItemSequencePairwiseDataset(Dataset):
         is_train=True,
         max_input_sequence_length: int = 5,
         num_negative_samples: int = 5,
+        hard_negative_mining: bool = False,
         item_metadata=None,
     ):
         self.df = interaction_df.sort_values(timestamp_col, ascending=True).reset_index(
@@ -29,6 +32,7 @@ class ItemSequencePairwiseDataset(Dataset):
         self.timestamp_col = timestamp_col
         self.max_input_sequence_length = max_input_sequence_length
         self.num_negative_samples = num_negative_samples
+        self.hard_negative_mining = hard_negative_mining
         self.item_metadata = item_metadata
 
         # Split the data into training or validation set based on timestamp
@@ -51,6 +55,13 @@ class ItemSequencePairwiseDataset(Dataset):
             )  # same as full_user_groups
 
         self.all_items = self.df[item_col].unique()
+
+        # Compute item popularity counts
+        item_counts = self.df[self.item_col].value_counts()
+        # Ensure all items are included, even if count is zero
+        item_counts = item_counts.reindex(self.all_items, fill_value=0)
+        # Normalize to get probabilities
+        self.item_popularity = item_counts / item_counts.sum()
 
     def get_item_sequence(self, user, timestamp):
         # Get the item sequence for the user before the current timestamp
@@ -123,9 +134,31 @@ class ItemSequencePairwiseDataset(Dataset):
 
             # Sample additional negative items from unseen items
             unseen_items = np.setdiff1d(self.all_items, user_items)
-            additional_neg_items = np.random.choice(
-                unseen_items, num_neg_samples_needed, replace=False
-            ).tolist()
+
+            if self.hard_negative_mining:
+                # Sample negative items from unseen items based on popularity (hard negative mining)
+                unseen_item_popularity = self.item_popularity.loc[unseen_items]
+                unseen_item_probs = unseen_item_popularity.values.astype(np.float64)
+                unseen_item_probs /= unseen_item_probs.sum()
+
+                # Use torch.multinomial to sample without replacement based on probabilities
+                unseen_item_probs_tensor = torch.tensor(
+                    unseen_item_probs, dtype=torch.float
+                )
+                additional_neg_indices = torch.multinomial(
+                    unseen_item_probs_tensor,
+                    num_samples=num_neg_samples_needed,
+                    replacement=False,
+                )
+                additional_neg_items = unseen_items[
+                    additional_neg_indices.numpy()
+                ].tolist()
+            else:
+                # Sample negative items from unseen items uniformly at random
+                additional_neg_items = np.random.choice(
+                    unseen_items, size=num_neg_samples_needed, replace=False
+                ).tolist()
+
             neg_items.extend(additional_neg_items)
             neg_labels.extend([0.0] * len(additional_neg_items))
 
@@ -153,6 +186,7 @@ class ItemSequencePairwiseDataset(Dataset):
     @classmethod
     def get_default_loss_fn(cls):
         return nn.MarginRankingLoss(margin=1.0)
+        # return bpr_loss
 
     @classmethod
     def forward(cls, model, batch_input, loss_fn=None, device="cpu"):

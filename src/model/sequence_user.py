@@ -55,7 +55,6 @@ class SequenceUserPairwiseRanking(nn.Module):
         embedded_seq = self.item_embedding(
             input_seq
         )  # Shape: [batch_size, seq_len, embedding_dim]
-
         # Mean pooling: take the mean over the sequence dimension (dim=1)
         pooled_output = embedded_seq.mean(dim=1)  # Shape: [batch_size, embedding_dim]
 
