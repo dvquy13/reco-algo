@@ -94,7 +94,7 @@ def train(
     delta_perc=0.01,
     print_steps=100,
     device="cpu",
-    gradient_clipping=True,
+    gradient_clipping=False,
     progress_bar_type="tqdm",
     callbacks=[],
 ):

@@ -20,7 +20,6 @@ class ItemSequencePairwiseDataset(Dataset):
         num_negative_samples: int = 5,
         item_metadata=None,
     ):
-        # self.df is the full dataframe containing both train and val
         self.df = interaction_df.sort_values(timestamp_col, ascending=True).reset_index(
             drop=True
         )
@@ -157,45 +156,29 @@ class ItemSequencePairwiseDataset(Dataset):
 
     @classmethod
     def forward(cls, model, batch_input, loss_fn=None, device="cpu"):
-        item_sequences = batch_input["item_sequence"].to(device)
-        target_items = batch_input["target"].to(device)
-        neg_items = batch_input["neg_items"].to(device)
+        # Use model's predict_train_batch to get positive and negative predictions
+        pos_predictions, neg_predictions = model.predict_train_batch(batch_input)
+
+        # Move labels to the device
         labels = batch_input["labels"].to(device)
 
-        # Ensure that neg_items and labels are 2D (batch_size x num_negative_samples)
-        if neg_items.dim() == 1:
-            neg_items = neg_items.unsqueeze(1)
+        # Ensure labels and neg_predictions are flattened
         if labels.dim() == 1:
             labels = labels.unsqueeze(1)
+        labels_flat = labels.reshape(-1)
 
-        # Model predicts scores for the target items based on item sequences
-        pos_predictions = model.predict(
-            item_sequences, target_items
-        )  # shape [batch_size, 1]
+        neg_predictions_flat = neg_predictions.reshape(-1)
 
-        # Expand pos_predictions to match the shape of neg_predictions
-        num_neg_samples = neg_items.shape[1]
+        # Expand pos_predictions to match the shape of neg_predictions_flat
+        num_neg_samples = neg_predictions.shape[1]
         pos_predictions_expanded = pos_predictions.expand(-1, num_neg_samples).reshape(
             -1
         )
 
-        # Flatten neg_items for batch prediction
-        item_sequences_expanded = item_sequences.unsqueeze(1).expand(
-            -1, num_neg_samples, -1
-        )
-        item_sequences_flat = item_sequences_expanded.reshape(
-            -1, item_sequences.shape[-1]
-        )
-        neg_items_flat = neg_items.reshape(-1)
-
-        neg_predictions_flat = model.predict(item_sequences_flat, neg_items_flat)
-
-        neg_predictions_flat = neg_predictions_flat.reshape(-1)
-        labels_flat = labels.reshape(-1)
-
         if loss_fn is None:
             loss_fn = cls.get_default_loss_fn()
 
+        # Compute the loss
         loss = loss_fn(pos_predictions_expanded, neg_predictions_flat, labels_flat)
 
         return loss

@@ -7,7 +7,7 @@ Try to implement some Recommendation Algorithm with PyTorch to learn both.
 
 ```
 conda create --prefix .venv python=3.11.9
-poetry env use .venv
+poetry env use .venv/bin/python
 poetry install
 cp .env.example .env
 make mlflow-up
