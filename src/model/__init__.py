@@ -7,6 +7,7 @@ from .linear_regression import (
     LinearRegressionRatingPrediction,
 )
 from .mf import MatrixFactorizationPairwiseRanking, MatrixFactorizationRatingPrediction
-from .sequence import SequenceRec
+from .sequence import SequencePairwiseRanking, SequenceRatingPrediction
+from .sequence_gru import GRUPairwiseRanking, GRURatingPrediction
 from .two_tower import TwoTowerPairwiseRanking, TwoTowerRatingPrediction
 from .wide_and_deep import WideAndDeep

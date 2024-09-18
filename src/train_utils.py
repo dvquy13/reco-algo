@@ -40,6 +40,9 @@ class MLflowLogCallback:
                 "train_loss", payload["train_loss"], step=payload.get("epoch", 0)
             )
 
+        if "total_train_time_seconds" in payload:
+            mlflow.log_metrics(payload)
+
 
 class MetricLogCallback:
     def __init__(self):
@@ -210,7 +213,16 @@ def train(
             break
 
     # Log the total training time
+    avg_train_time_per_epoch = total_train_time / (epoch + 1)
     logger.info(f"Total training time: {total_train_time:.2f} seconds")
     logger.info(
-        f"Average training time per epoch: {total_train_time / (epoch + 1):.2f} seconds"
+        f"Average training time per epoch: {avg_train_time_per_epoch:.2f} seconds"
     )
+    for callback in callbacks:
+        callback(
+            {
+                "num_train_epochs": epoch + 1,
+                "total_train_time_seconds": total_train_time,
+                "avg_train_time_seconds_per_epoch": avg_train_time_per_epoch,
+            }
+        )
