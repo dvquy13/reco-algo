@@ -42,7 +42,7 @@ class UserItemRatingDataset(Dataset):
 
     @classmethod
     def forward(cls, model, batch_input, loss_fn=None, device="cpu"):
-        predictions = model.predict_train_batch(batch_input)
+        predictions = model.predict_train_batch(batch_input, device=device)
         ratings = batch_input["rating"].to(device)
 
         if loss_fn is None:
