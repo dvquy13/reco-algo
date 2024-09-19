@@ -21,10 +21,6 @@ class WideAndDeepRatingPrediction(nn.Module):
 
         self.device = device
 
-        # Wide part (memorization) - simple linear interaction between user and item indices
-        self.user_bias = nn.Embedding(num_users, 1)
-        self.item_bias = nn.Embedding(num_items, 1)
-
         # Deep part (generalization) - embeddings for users and items
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
         self.item_embedding = nn.Embedding(num_items, embedding_dim)
@@ -32,7 +28,7 @@ class WideAndDeepRatingPrediction(nn.Module):
         # Fully connected layers for the deep part
         self.fc1 = nn.Linear(2 * embedding_dim, hidden_units)
         self.fc2 = nn.Linear(hidden_units, hidden_units // 2)
-        self.fc3 = nn.Linear(hidden_units // 2, 1)
+        self.fc3 = nn.Linear(hidden_units // 2 + embedding_dim * 2, 1)
 
         # Activation and dropout
         self.relu = nn.ReLU()
@@ -56,25 +52,20 @@ class WideAndDeepRatingPrediction(nn.Module):
         user = torch.as_tensor(user).to(self.device)
         item = torch.as_tensor(item).to(self.device)
 
-        # Wide part: user and item biases (for memorization)
-        wide_output = self.user_bias(user) + self.item_bias(item)
-
-        # Deep part: user and item embeddings
         user_emb = self.user_embedding(user)
         item_emb = self.item_embedding(item)
-        x = torch.cat([user_emb, item_emb], dim=-1)
+        user_item_emb = torch.cat([user_emb, item_emb], dim=-1)
 
         # Pass through the deep layers
-        x = self.fc1(x)
+        x = self.fc1(user_item_emb)
         x = self.relu(x)
         x = self.dropout(x)
         x = self.fc2(x)
         x = self.relu(x)
         x = self.dropout(x)
-        deep_output = self.fc3(x)
+        wide_deep_output = torch.cat([user_item_emb, x], dim=-1)
+        output = self.fc3(wide_deep_output)
 
-        # Combine wide and deep parts
-        output = wide_output + deep_output
         return output
 
     def predict(self, users: torch.Tensor, items: torch.Tensor) -> torch.Tensor:
