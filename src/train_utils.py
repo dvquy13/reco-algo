@@ -105,7 +105,7 @@ def train(
     device = torch.device(device)
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.9)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
     best_val_loss = np.inf
     no_improvement_count = 0
     step = 0
@@ -145,7 +145,6 @@ def train(
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
             optimizer.step()
-            scheduler.step()
 
             total_loss += loss.item()
 
@@ -189,6 +188,8 @@ def train(
             val_loss /= len(val_dataloader)
             epoch_metric_log_payload["val_loss"] = val_loss
             logger.info(f"Epoch {epoch + 1}, Validation Loss: {val_loss:.4f}")
+
+            scheduler.step(val_loss)
 
             if early_stopping:
                 if val_loss < best_val_loss * (1 - delta_perc):
