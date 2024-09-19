@@ -1,3 +1,5 @@
+from typing import Any, Dict, Tuple
+
 import torch
 import torch.nn as nn
 from tqdm import tqdm
@@ -11,7 +13,15 @@ from src.dataset_loader import (
 
 
 class TwoTowerPairwiseRanking(nn.Module):
-    def __init__(self, num_users, num_items, embedding_dim, hidden_units, device):
+    def __init__(
+        self,
+        num_users,
+        num_items,
+        embedding_dim,
+        hidden_units,
+        dropout: float = 0.2,
+        device: torch.device = torch.device("cpu"),
+    ):
         super(TwoTowerPairwiseRanking, self).__init__()
 
         self.device = device
@@ -28,7 +38,7 @@ class TwoTowerPairwiseRanking(nn.Module):
 
         # Activation and dropout
         self.relu = nn.ReLU().to(self.device)
-        self.dropout = nn.Dropout(0.2).to(self.device)
+        self.dropout = nn.Dropout(dropout).to(self.device)
 
     def forward(self, user, item):
         # Move input tensors to the correct device
@@ -52,7 +62,7 @@ class TwoTowerPairwiseRanking(nn.Module):
         item_x = self.relu(item_x)
 
         # Final output is the dot product of the two towers' outputs
-        output = torch.sum(user_x * item_x, dim=-1)
+        output = torch.sum(user_x * item_x, dim=1).unsqueeze(1)
 
         return output
 
@@ -64,13 +74,61 @@ class TwoTowerPairwiseRanking(nn.Module):
         items = torch.as_tensor(items)
         return self.forward(users, items)
 
-    def predict_train_batch(self, batch_input: dict, device: str = "cpu"):
-        users = batch_input["user_id"].to(device)
-        pos_items = batch_input["pos_item_id"].to(device)
-        neg_items = batch_input["neg_item_id"].to(device)
+    def predict_train_batch(
+        self, batch_input: Dict[str, Any]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Returns positive and negative predictions for a batch during training.
 
-        pos_predictions = self.predict(users, pos_items)
-        neg_predictions = self.predict(users, neg_items)
+        Args:
+            batch_input (Dict[str, Any]): Dictionary containing:
+                - 'user_indice': Tensor of user indices.
+                - 'pos_item_id': Tensor of positive item IDs.
+                - 'neg_item_ids': Tensor of negative item IDs (can be multiple per positive sample).
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]:
+                - pos_predictions: Predictions for positive items.
+                - neg_predictions: Predictions for negative items.
+        """
+        # Extract and move data to the correct device
+        user_ids = batch_input["user_indice"].to(self.device)
+        pos_item = batch_input["pos_item_id"].to(self.device)
+        neg_items = batch_input["neg_item_ids"].to(
+            self.device
+        )  # Shape: [batch_size, num_negatives]
+
+        # Ensure that neg_items is 2D (batch_size x num_negative_samples)
+        if neg_items.dim() == 1:
+            neg_items = neg_items.unsqueeze(1)  # Convert to shape [batch_size, 1]
+
+        batch_size = pos_item.size(0)
+        num_neg_samples = neg_items.size(1)
+
+        # Positive predictions
+        pos_predictions = self.predict(
+            users=user_ids, items=pos_item
+        )  # Shape: [batch_size]
+
+        # Prepare for negative predictions
+        # Expand user_ids to [batch_size * num_neg_samples]
+        user_ids_expanded = user_ids.unsqueeze(1).expand(-1, num_neg_samples)
+        user_ids_flat = user_ids_expanded.reshape(
+            -1
+        )  # Shape: [batch_size * num_neg_samples]
+
+        # Flatten negative items to [batch_size * num_neg_samples]
+        neg_items_flat = neg_items.reshape(-1)  # Shape: [batch_size * num_neg_samples]
+
+        # Negative predictions
+        neg_predictions_flat = self.predict(
+            users=user_ids_flat, items=neg_items_flat
+        )  # Shape: [batch_size * num_neg_samples]
+
+        # Reshape neg_predictions back to [batch_size, num_neg_samples]
+        neg_predictions = neg_predictions_flat.view(
+            batch_size, num_neg_samples
+        )  # Shape: [batch_size, num_neg_samples]
 
         return pos_predictions, neg_predictions
 

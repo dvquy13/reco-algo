@@ -1,5 +1,6 @@
 from typing import Any, Dict, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -122,20 +123,9 @@ class WideAndDeepRatingPrediction(nn.Module):
         k: int,
         batch_size: int = 128,
         progress_bar_type: str = "tqdm",
-        exclude_items: torch.Tensor = None,
     ) -> Dict[str, Any]:
         """
         Generate top k item recommendations with scores for each user in the provided list.
-
-        Args:
-            users (List[int] or torch.Tensor): List or tensor of user IDs for whom to generate recommendations.
-            k (int): Number of top recommendations to return for each user.
-            batch_size (int, optional): Batch size for processing users. Defaults to 128.
-            progress_bar_type (str, optional): Type of progress bar to use ('tqdm' or 'tqdm_notebook'). Defaults to 'tqdm'.
-            exclude_items (torch.Tensor, optional): Tensor of item IDs to exclude from recommendations. Defaults to None.
-
-        Returns:
-            Dict[str, List]: Dictionary containing user indices, recommended items, and their scores.
         """
         if progress_bar_type == "tqdm_notebook":
             from tqdm.notebook import tqdm
@@ -143,14 +133,7 @@ class WideAndDeepRatingPrediction(nn.Module):
             from tqdm import tqdm
 
         self.eval()  # Set model to evaluation mode
-        all_items = torch.arange(self.item_embedding.num_embeddings).to(
-            self.device
-        )  # All item indices
-
-        if exclude_items is not None:
-            # Assuming exclude_items is a list or tensor of items to exclude per user
-            # This implementation excludes the same items for all users. Modify if per-user exclusion is needed.
-            all_items = all_items[~all_items.unsqueeze(0).repeat(len(users), 1).bool()]
+        all_items = torch.arange(self.item_embedding.num_embeddings).to(self.device)
 
         user_indices = []
         recommendations = []
@@ -180,7 +163,7 @@ class WideAndDeepRatingPrediction(nn.Module):
                 topk_items = all_items[topk_indices]
 
                 # Collect recommendations
-                user_indices.extend(user_batch.cpu().tolist() * k)
+                user_indices.extend(np.repeat(user_batch.cpu().numpy(), k).tolist())
                 recommendations.extend(topk_items.cpu().numpy().flatten().tolist())
                 scores.extend(topk_scores.cpu().numpy().flatten().tolist())
 
