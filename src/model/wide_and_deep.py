@@ -17,11 +17,9 @@ class WideAndDeepRatingPrediction(nn.Module):
     ):
         super().__init__()
 
-        # Deep part (generalization) - embeddings for users and items
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
         self.item_embedding = nn.Embedding(num_items, embedding_dim)
 
-        # Fully connected layers for the deep part
         self.fc1 = nn.Linear(2 * embedding_dim, hidden_units)
         self.bn1 = nn.BatchNorm1d(hidden_units)
 
@@ -30,8 +28,7 @@ class WideAndDeepRatingPrediction(nn.Module):
 
         self.fc3 = nn.Linear(hidden_units // 2 + 2 * embedding_dim, 1)
 
-        # Activation and dropout
-        self.relu = nn.Softplus()
+        self.relu = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, user: torch.Tensor, item: torch.Tensor) -> torch.Tensor:

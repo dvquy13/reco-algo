@@ -94,6 +94,7 @@ def train(
     delta_perc=0.01,
     print_steps=100,
     device="cpu",
+    l2_reg=1e-5,
     gradient_clipping=False,
     progress_bar_type="tqdm",
     callbacks=[],
@@ -104,7 +105,7 @@ def train(
         raise Exception(f"Expected dataset type {dataset_type} but got {actual}")
     device = torch.device(device)
     model = model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=l2_reg)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
     best_val_loss = np.inf
     no_improvement_count = 0
