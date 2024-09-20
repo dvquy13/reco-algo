@@ -62,6 +62,8 @@ def log_ranking_metrics(args, eval_df):
             for kth, metric_value in result.items():
                 mlflow.log_metric(f"val_{metric}_at_k_as_step", metric_value, step=kth)
 
+    return report
+
 
 def log_classification_metrics(
     args,
@@ -119,3 +121,5 @@ def log_classification_metrics(
                         f"val_recall_at_prob_as_threshold_step", recall, step=prob
                     )
                 break
+
+    return classification_performance_report
