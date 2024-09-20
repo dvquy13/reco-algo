@@ -3,7 +3,7 @@ from typing import Any, Dict
 import torch
 import torch.nn as nn
 
-from src.dataset_loader import UserItemRatingDataset
+from src.dataset_loader import UserItemRatingDFDataset
 
 
 class WideAndDeepRatingPrediction(nn.Module):
@@ -33,7 +33,6 @@ class WideAndDeepRatingPrediction(nn.Module):
         # Activation and dropout
         self.relu = nn.Softplus()
         self.dropout = nn.Dropout(dropout)
-        self.sigmoid = nn.Sigmoid()
 
     def forward(self, user: torch.Tensor, item: torch.Tensor) -> torch.Tensor:
         user_emb = self.user_embedding(user)
@@ -65,8 +64,8 @@ class WideAndDeepRatingPrediction(nn.Module):
         Returns:
             torch.Tensor: Predicted scores.
         """
-        logits = self.forward(users, items)
-        return self.sigmoid(logits)
+        output_ratings = self.forward(users, items)
+        return nn.Sigmoid()(output_ratings)
 
     def predict_train_batch(
         self, batch_input: Dict[str, Any], device: torch.device = torch.device("cpu")
@@ -93,7 +92,7 @@ class WideAndDeepRatingPrediction(nn.Module):
         Returns:
             Dataset class
         """
-        return UserItemRatingDataset
+        return UserItemRatingDFDataset
 
     def recommend(
         self,

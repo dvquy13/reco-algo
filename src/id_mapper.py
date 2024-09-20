@@ -55,3 +55,4 @@ class IDMapper:
             self.index_to_item = data["index_to_item"]
             self.unknown_user_index = len(self.user_to_index)
             self.unknown_item_index = len(self.item_to_index)
+        return self

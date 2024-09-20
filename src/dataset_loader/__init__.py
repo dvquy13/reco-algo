@@ -1,6 +1,7 @@
 from .item_sequence import ItemSequenceDataset
 from .item_sequence_pairwise import ItemSequencePairwiseDataset
 from .user_item_rating import UserItemRatingDataset
+from .user_item_rating_df import UserItemRatingDFDataset
 from .user_item_rating_pairwise import UserItemRatingPairwiseDataset
 from .user_item_rating_pairwise_full import UserItemRatingPairwiseFullDataset
 from .user_item_rating_pairwise_halfseen import UserItemRatingPairwiseHalfSeenDataset
