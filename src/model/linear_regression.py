@@ -7,49 +7,25 @@ from src.dataset_loader import UserItemRatingDFDataset
 
 
 class LinearRegressionRatingPrediction(nn.Module):
-    def __init__(
-        self,
-        num_users,
-        num_items,
-        embedding_dim,
-        item_feature_size,
-        dropout=0.2,
-    ):
+    def __init__(self, num_users, num_items, embedding_dim, item_feature_size):
         super().__init__()
 
-        # Embeddings for users and items with specified embedding dimension
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
         self.item_embedding = nn.Embedding(num_items, embedding_dim)
 
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=dropout)
-
-        # Global bias term (mean rating)
         self.global_bias = nn.Parameter(torch.tensor([0.0]))
 
-        self.item_feature_layer = nn.Linear(item_feature_size, embedding_dim)
-
-        # Fully connected layer to map concatenated embeddings to rating prediction
+        input_size = embedding_dim * 2 + item_feature_size
         self.fc_rating = nn.Sequential(
-            nn.Linear(embedding_dim * 3, embedding_dim),
-            # nn.BatchNorm1d(embedding_dim),
-            self.relu,
-            # self.dropout,
-            nn.Linear(embedding_dim, 1),
+            nn.Linear(input_size, input_size // 2),
+            nn.Linear(input_size // 2, 1),
         )
 
     def forward(self, user, item, item_feature):
-        user = user
-        item = item
-        item_feature = item_feature
-
         user_emb = self.user_embedding(user)
         item_emb = self.item_embedding(item)
-        item_feature_emb = self.item_feature_layer(item_feature).squeeze(1)
-
-        cat_emb = torch.cat([user_emb, item_emb, item_feature_emb], dim=-1)
-
-        x = self.fc_rating(cat_emb)
+        input_layer = torch.cat([user_emb, item_emb, item_feature], dim=-1)
+        x = self.fc_rating(input_layer)
         output = x + self.global_bias
 
         return output
@@ -108,8 +84,11 @@ class LinearRegressionRatingPrediction(nn.Module):
                 items_batch = (
                     all_items.unsqueeze(0).expand(len(user_batch), -1).reshape(-1)
                 )
-                items_feature_batch = (
-                    item_features.unsqueeze(0).expand(len(user_batch), -1).reshape(-1)
+                items_feature_batch = item_features.unsqueeze(0).repeat(
+                    len(user_batch), 1, 1
+                )
+                items_feature_batch = items_feature_batch.view(
+                    -1, items_feature_batch.size(-1)
                 )
 
                 # Predict scores for the batch
