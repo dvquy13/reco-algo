@@ -2,8 +2,6 @@ from typing import Any, Dict, List, Optional
 
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
-from tqdm.notebook import tqdm as tqdm_notebook
 
 
 class ContentBased:
@@ -73,7 +71,11 @@ class ContentBased:
         return similarity
 
     def recommend(
-        self, items: List[int], k: int, progress_bar_type: Optional[str] = "tqdm"
+        self,
+        users: List[int],
+        items: List[int],
+        k: int,
+        progress_bar_type: Optional[str] = "tqdm",
     ) -> Dict[str, List[Any]]:
         """
         Generate top k item recommendations with scores for each input item in the provided list.
@@ -86,28 +88,27 @@ class ContentBased:
         Returns:
         - recommendations_dict: A flattened dictionary containing:
             {
-                "item_indices": [item1, item1, item2, item2, ...],
-                "recommendations": [similar_item1, similar_item2, ...],
-                "scores": [score1, score2, ...]
+                "user_indice": [user1, user1, user2, user2, ...],
+                "recommendation": [similar_item1, similar_item2, similar_item3, similar_item4 ...],
+                "score": [score1, score2, score3, score4 ...]
             }
         """
         # Determine the iterable with or without progress bar
         if progress_bar_type == "tqdm":
-            iterable = tqdm(items, desc="Generating Recommendations")
+            from tqdm import tqdm
         elif progress_bar_type == "tqdm_notebook":
-            iterable = tqdm_notebook(items, desc="Generating Recommendations")
-        elif progress_bar_type is None:
-            iterable = items
-        else:
-            raise ValueError(
-                "progress_bar_type must be either 'tqdm', 'tqdm_notebook', or None"
-            )
+            from tqdm.notebook import tqdm
 
-        item_indices = []
+        assert len(users) == len(items)
+
+        user_indices = []
         all_recommendations = []
         all_scores = []
 
-        for item in iterable:
+        iterable = tqdm(
+            enumerate(items), desc="Generating Recommendations", total=len(users)
+        )
+        for i, item in iterable:
             # Check if the item exists
             if item < 0 or item >= self.normalized_item_features.size(0):
                 print(f"Item ID {item} is out of bounds. Skipping.")
@@ -136,13 +137,14 @@ class ContentBased:
             top_k_indices = top_k_indices.cpu().tolist()
 
             # Append to the flattened lists
-            item_indices.extend([item] * len(top_k_indices))
+            user = users[i]
+            user_indices.extend([user] * len(top_k_indices))
             all_recommendations.extend(top_k_indices)
             all_scores.extend(top_k_scores)
 
         # Assemble the final dictionary
         recommendations_dict = {
-            "item_indice": item_indices,
+            "user_indice": user_indices,
             "recommendation": all_recommendations,
             "score": all_scores,
         }

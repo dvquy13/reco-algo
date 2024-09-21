@@ -121,12 +121,19 @@ class Item2ItemCollaborativeFiltering:
                 continue  # User has not rated any items, cannot make predictions
 
             # Similarities between unrated items and rated items
+            # Find the subset of the item_similarity matrix where the rows are unrated items and
+            # the columns are rated items. Values are how similar they are.
             similarities = self.item_similarity[
                 unrated_items_indices[:, np.newaxis], rated_items_indices
             ]  # shape (num_unrated_items, num_rated_items)
 
             # For each unrated item, get the top_n similar rated items
             if similarities.shape[1] > top_n:
+                # First use argpartition to find the top k similar (unsorted) between the
+                # unrated items and rated items
+                # After the argpartition step, the first k columns will contain the indices
+                # of the rated items that are most similar to the unrated items in the corresponding rows
+                # Then we can just take the first k columns.
                 top_n_sim_indices = np.argpartition(-similarities, top_n - 1, axis=1)[
                     :, :top_n
                 ]
@@ -134,8 +141,14 @@ class Item2ItemCollaborativeFiltering:
                 top_n_sim_indices = np.argsort(-similarities, axis=1)
 
             # Gather the top_n similarities and ratings
+            # Build the empty rows corresponding to the number of unrated items
             row_indices = np.arange(similarities.shape[0])[:, np.newaxis]
+            # Fill in the similarities with other items for those rows, but keep only the top similar (unsorted)
             top_n_similarities = similarities[row_indices, top_n_sim_indices]
+            # Since rated_items_indices denote the indices of the rated items in [n,] shape
+            # If we get the index from that vector using a matrix then it would return
+            # a new matrix of the same shape but with the values of the original matrix
+            # by the corresponding indices
             top_n_rated_item_indices = rated_items_indices[top_n_sim_indices]
             top_n_ratings = user_ratings[top_n_rated_item_indices]
 
