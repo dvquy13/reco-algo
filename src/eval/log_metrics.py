@@ -2,6 +2,7 @@ import os
 import warnings
 
 import mlflow
+import numpy as np
 import pandas as pd
 from evidently.metric_preset import ClassificationPreset
 from evidently.metrics import (
@@ -123,3 +124,9 @@ def log_classification_metrics(
                 break
 
     return classification_performance_report
+
+
+def mse(predictions, ratings):
+    predictions = np.array(predictions)
+    ratings = np.array(ratings)
+    return np.mean((predictions - ratings) ** 2)

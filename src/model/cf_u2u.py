@@ -1,6 +1,9 @@
+from typing import Any, Dict
+
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from tqdm import tqdm, tqdm_notebook
+
+from src.math_utils import sigmoid
 
 
 class User2UserCollaborativeFiltering:
@@ -14,7 +17,7 @@ class User2UserCollaborativeFiltering:
         # Placeholder for similarity matrix
         self.user_similarity = np.zeros((num_users, num_users))
 
-    def forward(self, user, item, top_n=10):
+    def forward(self, user, item, top_n=10, debug=False):
         """
         Predict rating for a given user-item pair considering only top_n most similar neighbors.
         """
@@ -27,8 +30,13 @@ class User2UserCollaborativeFiltering:
         sim_scores = sim_scores[rated_mask]
         user_ratings = user_ratings[rated_mask]
 
+        if debug:
+            import pdb
+
+            pdb.set_trace()
+
         if len(sim_scores) == 0 or sim_scores.sum() == 0:
-            return 3  # If no users have rated the item, return neutral rating
+            return 0
 
         # Step 1: Find the top N most similar users
         if len(sim_scores) > top_n:
@@ -38,7 +46,8 @@ class User2UserCollaborativeFiltering:
             user_ratings = user_ratings[top_n_indices]
 
         # Step 2: Compute the weighted average of ratings from top N similar users
-        return np.dot(sim_scores, user_ratings) / np.sum(sim_scores)
+        output = np.dot(sim_scores, user_ratings) / np.sum(sim_scores)
+        return output
 
     def fit(self, user_ids, item_ids, ratings):
         """
@@ -66,9 +75,15 @@ class User2UserCollaborativeFiltering:
             [self.forward(user, item, top_n=top_n) for user, item in zip(users, items)]
         )
 
-        return predictions
+        return sigmoid(predictions)
 
-    def recommend(self, users, k, top_n=10, progress_bar_type="tqdm"):
+    def recommend(
+        self,
+        users: np.ndarray,
+        k: int,
+        top_n: int = 10,
+        progress_bar_type: str = "tqdm",
+    ) -> Dict[str, Any]:
         """
         Generate top k item recommendations with scores for each user in the provided list.
 
@@ -86,87 +101,40 @@ class User2UserCollaborativeFiltering:
                 "score": [score1, score2, score3, score4, ...]
             }
         """
-        # Select the appropriate tqdm function based on progress_bar_type
-        if progress_bar_type == "tqdm":
-            progress_bar = tqdm
-        elif progress_bar_type == "tqdm_notebook":
-            progress_bar = tqdm_notebook
+        if progress_bar_type == "tqdm_notebook":
+            from tqdm import tqdm_notebook as tqdm
         else:
-            raise ValueError(
-                "progress_bar_type must be either 'tqdm' or 'tqdm_notebook'"
-            )
+            from tqdm import tqdm
+
+        if type(users) == list:
+            users = np.array(users)
+
+        all_items = np.arange(self.num_items)
 
         user_indices = []
-        all_recommendations = []
-        all_scores = []
+        recommendations = []
+        scores = []
 
-        for user in progress_bar(users, desc="Generating Recommendations"):
-            # Find items not yet rated by the user
-            unrated_items = np.where(self.user_item_matrix[user, :] == 0)[0]
+        total_users = len(users)
+        for i in tqdm(range(0, total_users), desc="Generating recommendations"):
+            user = users[i]
 
-            if len(unrated_items) == 0:
-                # If the user has rated all items, skip to next user
-                continue
+            # Predict scores for all items for the current user
+            predicted_scores = self.predict(
+                [user] * len(all_items), all_items, top_n=top_n
+            )
 
-            # Get the similarity scores for the user
-            sim_scores = self.user_similarity[user]
+            # Get the top k items with the highest scores
+            top_k_items = np.argsort(predicted_scores)[-k:][::-1]
+            top_k_scores = predicted_scores[top_k_items]
 
-            # Get indices of the top_n most similar users
-            if top_n < len(sim_scores):
-                top_n_indices = np.argpartition(sim_scores, -top_n)[-top_n:]
-            else:
-                top_n_indices = np.arange(len(sim_scores))
+            # Store results
+            user_indices.extend([user] * k)
+            recommendations.extend(top_k_items)
+            scores.extend(top_k_scores)
 
-            sim_scores_top_n = sim_scores[top_n_indices]
-
-            # For computational efficiency, remove zero similarity scores
-            non_zero_sim_mask = sim_scores_top_n > 0
-            sim_scores_top_n = sim_scores_top_n[non_zero_sim_mask]
-            top_n_indices = top_n_indices[non_zero_sim_mask]
-
-            if len(sim_scores_top_n) == 0:
-                continue  # No similar users
-
-            # Get the ratings of the top_n similar users
-            user_ratings_top_n = self.user_item_matrix[
-                top_n_indices, :
-            ]  # shape (top_n, num_items)
-
-            # Mask where ratings are non-zero
-            mask = user_ratings_top_n != 0  # shape (top_n, num_items)
-
-            # Compute numerator and denominator
-            numerator = np.dot(
-                sim_scores_top_n, user_ratings_top_n * mask
-            )  # shape (num_items,)
-            denominator = np.dot(sim_scores_top_n, mask)  # shape (num_items,)
-
-            # Avoid division by zero
-            with np.errstate(divide="ignore", invalid="ignore"):
-                predicted_ratings = numerator / denominator
-                predicted_ratings[np.isnan(predicted_ratings)] = 3  # Set NaNs to 3
-
-            # Only consider unrated items
-            predicted_ratings_unrated = predicted_ratings[unrated_items]
-
-            # Get the top k items
-            if len(predicted_ratings_unrated) == 0:
-                continue
-
-            top_k_indices = np.argpartition(-predicted_ratings_unrated, k - 1)[:k]
-            top_k_items = unrated_items[top_k_indices]
-            top_k_scores = predicted_ratings_unrated[top_k_indices]
-
-            # Append to the flattened lists
-            user_indices.extend([user] * len(top_k_items))
-            all_recommendations.extend(top_k_items.tolist())
-            all_scores.extend(top_k_scores.tolist())
-
-        # Assemble the final dictionary
-        recommendations_dict = {
+        return {
             "user_indice": user_indices,
-            "recommendation": all_recommendations,
-            "score": all_scores,
+            "recommendation": recommendations,
+            "score": scores,
         }
-
-        return recommendations_dict

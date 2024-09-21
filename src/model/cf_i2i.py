@@ -3,6 +3,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
 from tqdm.notebook import tqdm as tqdm_notebook
 
+from src.math_utils import sigmoid
+
 
 class Item2ItemCollaborativeFiltering:
     def __init__(self, num_users, num_items):
@@ -15,7 +17,7 @@ class Item2ItemCollaborativeFiltering:
         # Placeholder for item similarity matrix
         self.item_similarity = np.zeros((num_items, num_items))
 
-    def forward(self, user, item, top_n=10):
+    def forward(self, user, item, top_n=10, debug=False):
         """
         Predict rating for a given user-item pair considering only top_n most similar items.
         """
@@ -27,6 +29,11 @@ class Item2ItemCollaborativeFiltering:
         rated_mask = item_ratings != 0
         sim_scores = sim_scores[rated_mask]
         item_ratings = item_ratings[rated_mask]
+
+        if debug:
+            import pdb
+
+            pdb.set_trace()
 
         if len(sim_scores) == 0 or sim_scores.sum() == 0:
             return 3  # If no similar items are rated by the user, return neutral rating
@@ -67,7 +74,7 @@ class Item2ItemCollaborativeFiltering:
             [self.forward(user, item, top_n=top_n) for user, item in zip(users, items)]
         )
 
-        return predictions
+        return sigmoid(predictions)
 
     def recommend(self, users, k, top_n=10, progress_bar_type="tqdm"):
         """
@@ -139,15 +146,16 @@ class Item2ItemCollaborativeFiltering:
             # Avoid division by zero
             with np.errstate(divide="ignore", invalid="ignore"):
                 predicted_ratings = numerator / denominator
-                predicted_ratings[np.isnan(predicted_ratings)] = (
-                    3  # Neutral rating if denominator is zero
-                )
+                predicted_ratings[np.isnan(predicted_ratings)] = 0
 
             # Get the top k items
             if len(predicted_ratings) == 0:
                 continue
 
-            top_k_indices = np.argpartition(-predicted_ratings, k - 1)[:k]
+            if len(predicted_ratings) > k:
+                top_k_indices = np.argpartition(-predicted_ratings, k - 1)[:k]
+            else:
+                top_k_indices = np.argsort(-predicted_ratings)
             top_k_items = unrated_items_indices[top_k_indices]
             top_k_scores = predicted_ratings[top_k_indices]
 
