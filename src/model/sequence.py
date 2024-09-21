@@ -75,8 +75,8 @@ class SequenceRatingPrediction(nn.Module):
         return output_ratings  # Shape: [batch_size]
 
     def predict(self, user, item_sequence, target_item):
-        output_ratings = self.forward(user, item_sequence, target_item)
-        return nn.Sigmoid()(output_ratings)
+        output_rating = self.forward(user, item_sequence, target_item)
+        return nn.Sigmoid()(output_rating)
 
     def predict_train_batch(
         self, batch_input: dict, device: torch.device = torch.device("cpu")
