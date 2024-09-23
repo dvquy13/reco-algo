@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 from loguru import logger
+from tqdm.notebook import tqdm
 
 from src.id_mapper import IDMapper
 
@@ -96,7 +97,6 @@ def train(
     device="cpu",
     l2_reg=1e-5,
     gradient_clipping=False,
-    progress_bar_type="tqdm",
     callbacks=[],
 ):
     if (dataset_type := model.get_expected_dataset_type()) != (
@@ -110,11 +110,6 @@ def train(
     best_val_loss = np.inf
     no_improvement_count = 0
     step = 0
-
-    if progress_bar_type == "tqdm_notebook":
-        from tqdm.notebook import tqdm
-    else:
-        from tqdm import tqdm
 
     stop_training = False
     total_train_time = 0  # To track the total time

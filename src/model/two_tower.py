@@ -2,48 +2,80 @@ from typing import Any, Dict
 
 import torch
 import torch.nn as nn
+from tqdm.auto import tqdm
 
 from src.dataset_loader import UserItemRatingDFDataset
 
 
 class TwoTowerRatingPrediction(nn.Module):
+    """
+    A two-tower neural network for rating prediction in recommender systems.
+
+    This model consists of two separate towers for users and items. Each tower
+    contains an embedding layer followed by a fully connected (FC) layer with
+    ReLU activation and dropout. The final predicted score is computed as the
+    dot product between the user and item towers' outputs.
+
+    Attributes:
+        user_embedding (nn.Embedding): Embedding layer for user indices.
+        user_fc1 (nn.Linear): First fully connected layer for the user tower.
+        item_embedding (nn.Embedding): Embedding layer for item indices.
+        item_fc1 (nn.Linear): First fully connected layer for the item tower.
+        relu (nn.ReLU): ReLU activation function.
+        dropout (nn.Dropout): Dropout layer for regularization.
+    """
+
     def __init__(
         self, num_users, num_items, embedding_dim, hidden_units, dropout: float = 0.2
     ):
+        """
+        Initializes the TwoTowerRatingPrediction model.
+
+        Args:
+            num_users (int): The number of unique users.
+            num_items (int): The number of unique items.
+            embedding_dim (int): Dimensionality of user and item embeddings.
+            hidden_units (int): Number of hidden units in the fully connected layers.
+            dropout (float, optional): Dropout rate for regularization. Defaults to 0.2.
+        """
         super().__init__()
 
         # User Tower: embedding and MLP for user features
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
         self.user_fc1 = nn.Linear(embedding_dim, hidden_units)
-        self.user_fc2 = nn.Linear(hidden_units, hidden_units // 2)
 
         # Item Tower: embedding and MLP for item features
         self.item_embedding = nn.Embedding(num_items, embedding_dim)
         self.item_fc1 = nn.Linear(embedding_dim, hidden_units)
-        self.item_fc2 = nn.Linear(hidden_units, hidden_units // 2)
 
         # Activation and dropout
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, user, item):
+        """
+        Forward pass of the two-tower model.
+
+        Args:
+            user (torch.Tensor): Tensor of user indices.
+            item (torch.Tensor): Tensor of item indices.
+
+        Returns:
+            torch.Tensor: Predicted interaction scores for the user-item pairs.
+        """
         # User Tower
         user_emb = self.user_embedding(user)
         user_x = self.user_fc1(user_emb)
         user_x = self.relu(user_x)
-        # user_x = self.dropout(user_x)
-        user_x = self.user_fc2(user_x)
-        user_x = self.relu(user_x)
+        user_x = self.dropout(user_x)
 
         # Item Tower
         item_emb = self.item_embedding(item)
         item_x = self.item_fc1(item_emb)
         item_x = self.relu(item_x)
-        # item_x = self.dropout(item_x)
-        item_x = self.item_fc2(item_x)
-        item_x = self.relu(item_x)
+        item_x = self.dropout(item_x)
 
-        # output = torch.sum(user_x * item_x, dim=1).unsqueeze(1)
+        # Compute dot product between user and item tower outputs
         output = torch.sum(user_x * item_x, dim=1)
 
         return output
@@ -81,20 +113,31 @@ class TwoTowerRatingPrediction(nn.Module):
 
     @classmethod
     def get_expected_dataset_type(cls):
+        """
+        Returns the expected dataset type for this model.
+
+        Returns:
+            UserItemRatingDFDataset: The dataset type used by this model.
+        """
         return UserItemRatingDFDataset
 
     def recommend(
-        self,
-        users: torch.Tensor,
-        k: int,
-        batch_size: int = 128,
-        progress_bar_type: str = "tqdm",
+        self, users: torch.Tensor, k: int, batch_size: int = 128
     ) -> Dict[str, Any]:
-        if progress_bar_type == "tqdm_notebook":
-            from tqdm import tqdm_notebook as tqdm
-        else:
-            from tqdm import tqdm
+        """
+        Generate top-k item recommendations for each user.
 
+        Args:
+            users (torch.Tensor): Tensor of user indices.
+            k (int): Number of top items to recommend for each user.
+            batch_size (int, optional): Batch size for processing users. Defaults to 128.
+
+        Returns:
+            Dict[str, Any]: Dictionary containing recommended items and scores:
+                'user_indice': List of user indices.
+                'recommendation': List of recommended item indices.
+                'score': List of predicted interaction scores.
+        """
         self.eval()
         all_items = torch.arange(
             self.item_embedding.num_embeddings, device=users.device

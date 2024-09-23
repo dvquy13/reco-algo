@@ -1,3 +1,4 @@
+import pandas as pd
 import plotly.express as px
 
 
@@ -54,3 +55,18 @@ def plot_train_vs_val_loss(epoch_metrics_df, height=500, display_label=False):
     # Display the plot
     fig.update_layout(showlegend=True)
     fig.show()
+
+
+def visualize_training(train_logs):
+    step_metrics = [p for p in train_logs if "step" in p]
+    epoch_metrics = [p for p in train_logs if "epoch" in p]
+    step_metrics_df = pd.DataFrame(step_metrics)
+    epoch_metrics_df = pd.DataFrame(epoch_metrics)
+    epoch_metrics_df = epoch_metrics_df.pipe(
+        lambda df: pd.melt(
+            df, id_vars=["epoch"], var_name="loss_type", value_name="value"
+        )
+    )
+
+    plot_metric(step_metrics_df, col="global_loss")
+    plot_metric(step_metrics_df, col="total_grad_norm")

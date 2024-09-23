@@ -1,11 +1,25 @@
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from tqdm import tqdm
-from tqdm.notebook import tqdm as tqdm_notebook
+from tqdm.auto import tqdm
+
+from src.math_utils import sigmoid
 
 
 class Item2ItemCollaborativeFiltering:
+    """
+    Item-to-Item Collaborative Filtering model that recommends items to users
+    based on item similarity and past user interactions (ratings). It computes
+    item similarity using cosine similarity and predicts ratings for unrated items.
+    """
+
     def __init__(self, num_users, num_items):
+        """
+        Initialize the Item2ItemCollaborativeFiltering model.
+
+        Parameters:
+        - num_users (int): The number of users in the dataset.
+        - num_items (int): The number of items in the dataset.
+        """
         self.num_users = num_users
         self.num_items = num_items
 
@@ -15,9 +29,19 @@ class Item2ItemCollaborativeFiltering:
         # Placeholder for item similarity matrix
         self.item_similarity = np.zeros((num_items, num_items))
 
-    def forward(self, user, item, top_n=10):
+    def forward(self, user, item, top_n=10, debug=False):
         """
-        Predict rating for a given user-item pair considering only top_n most similar items.
+        Predict the rating for a given user-item pair, considering the top_n most similar items.
+
+        Parameters:
+        - user (int): The index of the user.
+        - item (int): The index of the item.
+        - top_n (int): The number of top similar items to consider for prediction. Default is 10.
+        - debug (bool): If True, triggers a debugger to inspect values.
+
+        Returns:
+        - float: The predicted rating for the user-item pair.
+                 If no similar items are rated by the user, it returns 0.
         """
         # Compute prediction using weighted average of ratings for similar items
         sim_scores = self.item_similarity[item]
@@ -28,8 +52,13 @@ class Item2ItemCollaborativeFiltering:
         sim_scores = sim_scores[rated_mask]
         item_ratings = item_ratings[rated_mask]
 
+        if debug:
+            import pdb
+
+            pdb.set_trace()
+
         if len(sim_scores) == 0 or sim_scores.sum() == 0:
-            return 3  # If no similar items are rated by the user, return neutral rating
+            return 0  # No similar items rated by the user
 
         # Step 1: Find the top N most similar items
         if len(sim_scores) > top_n:
@@ -43,8 +72,12 @@ class Item2ItemCollaborativeFiltering:
 
     def fit(self, user_ids, item_ids, ratings):
         """
-        Fit the collaborative filtering model by constructing the user-item matrix
-        and computing the item-item similarity matrix.
+        Fit the model by constructing the user-item matrix and computing the item-item similarity matrix.
+
+        Parameters:
+        - user_ids (array-like): List or array of user indices.
+        - item_ids (array-like): List or array of item indices.
+        - ratings (array-like): List or array of corresponding ratings.
         """
         # Step 1: Create user-item matrix
         for user, item, rating in zip(user_ids, item_ids, ratings):
@@ -58,7 +91,15 @@ class Item2ItemCollaborativeFiltering:
 
     def predict(self, users, items, top_n=10):
         """
-        Predict interaction score (rating) for given users and items considering top_n neighbors.
+        Predict interaction scores (ratings) for given users and items.
+
+        Parameters:
+        - users (array-like): List or array of user indices.
+        - items (array-like): List or array of item indices.
+        - top_n (int): Number of top similar items to consider when predicting scores. Default is 10.
+
+        Returns:
+        - np.ndarray: Array of predicted ratings.
         """
         users = np.asarray(users)
         items = np.asarray(items)
@@ -67,41 +108,28 @@ class Item2ItemCollaborativeFiltering:
             [self.forward(user, item, top_n=top_n) for user, item in zip(users, items)]
         )
 
-        return predictions
+        return sigmoid(predictions)
 
-    def recommend(self, users, k, top_n=10, progress_bar_type="tqdm"):
+    def recommend(self, users, k, top_n=10):
         """
-        Generate top k item recommendations with scores for each user in the provided list.
+        Generate top-k item recommendations with predicted scores for each user.
 
         Parameters:
-        - users: List or array of user IDs for whom to generate recommendations.
-        - k: Number of top recommendations to return for each user.
-        - top_n: Number of top similar items to consider when predicting scores.
-        - progress_bar_type: Type of progress bar to use ('tqdm' or 'tqdm_notebook').
+        - users (array-like): List or array of user indices for whom to generate recommendations.
+        - k (int): Number of top recommendations to return for each user.
+        - top_n (int): Number of top similar items to consider when predicting scores. Default is 10.
 
         Returns:
-        - recommendations_dict: A flattened dictionary containing:
-            {
-                "user_indice": [user1, user1, user2, user2, ...],
-                "recommendation": [item1, item2, item3, item4, ...],
-                "score": [score1, score2, score3, score4, ...]
-            }
+        - dict: Dictionary with the following keys:
+            - 'user_indice' (list): List of user indices for whom recommendations are generated.
+            - 'recommendation' (list): List of recommended item indices.
+            - 'score' (list): List of corresponding predicted scores for the recommended items.
         """
-        # Select the appropriate tqdm function based on progress_bar_type
-        if progress_bar_type == "tqdm":
-            progress_bar = tqdm
-        elif progress_bar_type == "tqdm_notebook":
-            progress_bar = tqdm_notebook
-        else:
-            raise ValueError(
-                "progress_bar_type must be either 'tqdm' or 'tqdm_notebook'"
-            )
-
         user_indices = []
         all_recommendations = []
         all_scores = []
 
-        for user in progress_bar(users, desc="Generating Recommendations"):
+        for user in tqdm(users, desc="Generating Recommendations"):
             # User's ratings vector
             user_ratings = self.user_item_matrix[user, :]  # shape (num_items,)
             rated_items_indices = np.where(user_ratings != 0)[0]
@@ -114,12 +142,19 @@ class Item2ItemCollaborativeFiltering:
                 continue  # User has not rated any items, cannot make predictions
 
             # Similarities between unrated items and rated items
+            # Find the subset of the item_similarity matrix where the rows are unrated items and
+            # the columns are rated items. Values are how similar they are.
             similarities = self.item_similarity[
                 unrated_items_indices[:, np.newaxis], rated_items_indices
             ]  # shape (num_unrated_items, num_rated_items)
 
             # For each unrated item, get the top_n similar rated items
             if similarities.shape[1] > top_n:
+                # First use argpartition to find the top k similar (unsorted) between the
+                # unrated items and rated items
+                # After the argpartition step, the first k columns will contain the indices
+                # of the rated items that are most similar to the unrated items in the corresponding rows
+                # Then we can just take the first k columns.
                 top_n_sim_indices = np.argpartition(-similarities, top_n - 1, axis=1)[
                     :, :top_n
                 ]
@@ -127,8 +162,14 @@ class Item2ItemCollaborativeFiltering:
                 top_n_sim_indices = np.argsort(-similarities, axis=1)
 
             # Gather the top_n similarities and ratings
+            # Build the empty rows corresponding to the number of unrated items
             row_indices = np.arange(similarities.shape[0])[:, np.newaxis]
+            # Fill in the similarities with other items for those rows, but keep only the top similar (unsorted)
             top_n_similarities = similarities[row_indices, top_n_sim_indices]
+            # Since rated_items_indices denote the indices of the rated items in [n,] shape
+            # If we get the index from that vector using a matrix then it would return
+            # a new matrix of the same shape but with the values of the original matrix
+            # by the corresponding indices
             top_n_rated_item_indices = rated_items_indices[top_n_sim_indices]
             top_n_ratings = user_ratings[top_n_rated_item_indices]
 
@@ -139,17 +180,18 @@ class Item2ItemCollaborativeFiltering:
             # Avoid division by zero
             with np.errstate(divide="ignore", invalid="ignore"):
                 predicted_ratings = numerator / denominator
-                predicted_ratings[np.isnan(predicted_ratings)] = (
-                    3  # Neutral rating if denominator is zero
-                )
+                predicted_ratings[np.isnan(predicted_ratings)] = 0
 
             # Get the top k items
             if len(predicted_ratings) == 0:
                 continue
 
-            top_k_indices = np.argpartition(-predicted_ratings, k - 1)[:k]
+            if len(predicted_ratings) > k:
+                top_k_indices = np.argpartition(-predicted_ratings, k - 1)[:k]
+            else:
+                top_k_indices = np.argsort(-predicted_ratings)
             top_k_items = unrated_items_indices[top_k_indices]
-            top_k_scores = predicted_ratings[top_k_indices]
+            top_k_scores = sigmoid(predicted_ratings[top_k_indices])
 
             # Append to the flattened lists
             user_indices.extend([user] * len(top_k_items))
