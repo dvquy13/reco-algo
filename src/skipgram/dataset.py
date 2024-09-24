@@ -178,12 +178,4 @@ class SkipGramDataset(Dataset):
             loss_fn = cls.get_default_loss_fn()
 
         loss = loss_fn(predictions, labels)
-        if np.random.uniform() < 0.01:
-            _predictions = predictions.cpu().detach().numpy()
-            _labels = labels.cpu().detach().numpy()
-            mse_loss = (predictions - labels) ** 2
-            logger.info(
-                f"<mse_loss>{mse_loss.mean()}</mse_loss> <predictions.mean>{_predictions.mean()}</predictions.mean> <label>{_labels.mean()}</label>"
-            )
-        mean_loss = loss / len(predictions)
-        return mean_loss
+        return loss

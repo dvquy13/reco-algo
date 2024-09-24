@@ -93,11 +93,12 @@ def train(
     epochs=10,
     lr=0.001,
     delta_perc=0.01,
-    print_steps=100,
+    update_steps=100,
     device="cpu",
     l2_reg=1e-5,
     gradient_clipping=False,
     callbacks=[],
+    verbose=False,
 ):
     if (dataset_type := model.get_expected_dataset_type()) != (
         actual := type(dataloader.dataset)
@@ -106,7 +107,12 @@ def train(
     device = torch.device(device)
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=l2_reg)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+    scheduler_patience = (
+        patience // 2
+    )  # If equal or greater than early stopping patience then no use
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, factor=0.3, patience=scheduler_patience
+    )
     best_val_loss = np.inf
     no_improvement_count = 0
     step = 0
@@ -131,7 +137,7 @@ def train(
             enumerate(dataloader),
             desc=f"Training Epoch {epoch+1}",
             position=1,
-            leave=False,
+            leave=None,
             total=num_batches,
         )
 
@@ -152,22 +158,24 @@ def train(
 
             total_loss += loss.item()
 
-            if step % print_steps == 0:
+            if step % update_steps == 0:
                 # Collect metric values
                 metric_log_payload = {"step": step, "dataset": "train"}
-                metric_log_payload["global_loss"] = total_loss / (batch_idx + 1)
+                global_loss = total_loss / (batch_idx + 1)
+                metric_log_payload["global_loss"] = global_loss
                 metric_log_payload["learning_rate"] = scheduler.get_last_lr()[0]
                 gradient_metrics = log_gradients(model)
                 metric_log_payload.update(gradient_metrics)
 
                 # Log metrics
-                logger.info(
-                    f"Step {step}, Global Loss: {metric_log_payload['global_loss']:.4f}"
-                )
-                logger.info(
-                    f"Step {step}, Learning Rate: {metric_log_payload['learning_rate']:.6f}"
-                )
-                logger.info(f"Step {step}, Gradient Norms: {gradient_metrics}")
+                if verbose:
+                    logger.info(
+                        f"Step {step}, Global Loss: {metric_log_payload['global_loss']:.4f}"
+                    )
+                    logger.info(
+                        f"Step {step}, Learning Rate: {metric_log_payload['learning_rate']:.6f}"
+                    )
+                    logger.info(f"Step {step}, Gradient Norms: {gradient_metrics}")
 
                 for callback in callbacks:
                     callback(metric_log_payload)
@@ -181,7 +189,8 @@ def train(
             "epoch": epoch + 1,
             "train_loss": avg_train_loss,
         }
-        logger.info(f"Epoch {epoch + 1}, Loss: {avg_train_loss:.4f}")
+        if verbose:
+            logger.info(f"Epoch {epoch + 1}, Loss: {avg_train_loss:.4f}")
 
         if val_dataloader:
             model.eval()
@@ -193,9 +202,9 @@ def train(
 
             val_loss /= len(val_dataloader)
             epoch_metric_log_payload["val_loss"] = val_loss
-            logger.info(f"Epoch {epoch + 1}, Validation Loss: {val_loss:.4f}")
-
-            scheduler.step(val_loss)
+            epoch_iterator.set_postfix(Val_Loss=val_loss)
+            if verbose:
+                logger.info(f"Epoch {epoch + 1}, Validation Loss: {val_loss:.4f}")
 
             if early_stopping:
                 if val_loss < best_val_loss * (1 - delta_perc):
@@ -208,10 +217,13 @@ def train(
                     logger.info(f"Early stopping at epoch {epoch + 1}")
                     stop_training = True
 
+        scheduler.step(val_loss)
+
         # Log the time taken for this epoch
         epoch_time = time.time() - epoch_start_time
         total_train_time += epoch_time
-        logger.info(f"Epoch {epoch + 1} time: {epoch_time:.2f} seconds")
+        if verbose:
+            logger.info(f"Epoch {epoch + 1} time: {epoch_time:.2f} seconds")
 
         for callback in callbacks:
             callback(epoch_metric_log_payload)

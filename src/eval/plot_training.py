@@ -68,5 +68,13 @@ def visualize_training(train_logs):
         )
     )
 
+    fig = px.line(
+        epoch_metrics_df.loc[lambda df: df["loss_type"].eq("train_loss")],
+        x="epoch",
+        y="value",
+        color="loss_type",
+        title="train loss by epoch",
+    )
+    fig.show()
     plot_metric(step_metrics_df, col="global_loss")
     plot_metric(step_metrics_df, col="total_grad_norm")
