@@ -113,7 +113,15 @@ def train(
 
     stop_training = False
     total_train_time = 0  # To track the total time
-    for epoch in tqdm(range(epochs), desc="Epochs", position=0):
+
+    epoch_iterator = tqdm(
+        range(epochs),
+        desc=f"Epochs",
+        position=0,
+        total=epochs,
+    )
+
+    for epoch in epoch_iterator:
         epoch_start_time = time.time()  # Start time for this epoch
 
         model.train()
@@ -165,6 +173,8 @@ def train(
                     callback(metric_log_payload)
 
             batch_iterator.set_postfix(Global_Loss=total_loss / (batch_idx + 1))
+
+        epoch_iterator.set_postfix(Global_Loss=total_loss / (batch_idx + 1))
 
         avg_train_loss = total_loss / num_batches
         epoch_metric_log_payload = {
