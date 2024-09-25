@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from copy import deepcopy
 from typing import List
@@ -163,6 +164,16 @@ class SkipGramDataset(Dataset):
             "context_items": torch.cat(context_items, dim=0),
             "labels": torch.cat(labels, dim=0),
         }
+
+    def save_id_mappings(self, filepath: str):
+        with open(filepath, "w") as f:
+            json.dump(
+                {
+                    "id_to_idx": self.id_to_idx,
+                    "idx_to_id": self.idx_to_id,
+                },
+                f,
+            )
 
     @classmethod
     def get_default_loss_fn(cls):

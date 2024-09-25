@@ -20,7 +20,6 @@ class MLflowLogCallback:
 
         if dataset == "train":
             mlflow.log_metric("train_global_loss", payload["global_loss"], step=step)
-            mlflow.log_metric("learning_rate", payload["learning_rate"], step=step)
             if "total_grad_norm" in payload:
                 mlflow.log_metric(
                     "total_grad_norm", payload["total_grad_norm"], step=step
@@ -43,6 +42,11 @@ class MLflowLogCallback:
 
         if "total_train_time_seconds" in payload:
             mlflow.log_metrics(payload)
+
+        if "learning_rate" in payload:
+            mlflow.log_metric(
+                "learning_rate", payload["learning_rate"], step=payload["epoch"]
+            )
 
 
 class MetricLogCallback:
@@ -110,8 +114,9 @@ def train(
     scheduler_patience = (
         patience // 2
     )  # If equal or greater than early stopping patience then no use
+    scheduler_factor = 0.3  # Andrew Ng magic learning rate step number
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, factor=0.3, patience=scheduler_patience
+        optimizer, factor=scheduler_factor, patience=scheduler_patience
     )
     best_val_loss = np.inf
     no_improvement_count = 0
@@ -163,7 +168,6 @@ def train(
                 metric_log_payload = {"step": step, "dataset": "train"}
                 global_loss = total_loss / (batch_idx + 1)
                 metric_log_payload["global_loss"] = global_loss
-                metric_log_payload["learning_rate"] = scheduler.get_last_lr()[0]
                 gradient_metrics = log_gradients(model)
                 metric_log_payload.update(gradient_metrics)
 
@@ -189,10 +193,11 @@ def train(
             "epoch": epoch + 1,
             "train_loss": avg_train_loss,
         }
+        epoch_metric_log_payload["learning_rate"] = scheduler.get_last_lr()[0]
         if verbose:
             logger.info(f"Epoch {epoch + 1}, Loss: {avg_train_loss:.4f}")
 
-        if val_dataloader:
+        if val_dataloader is not None:
             model.eval()
             val_loss = 0
             with torch.no_grad():
@@ -206,6 +211,8 @@ def train(
             if verbose:
                 logger.info(f"Epoch {epoch + 1}, Validation Loss: {val_loss:.4f}")
 
+            scheduler.step(val_loss, epoch=epoch + 1)
+
             if early_stopping:
                 if val_loss < best_val_loss * (1 - delta_perc):
                     best_val_loss = val_loss
@@ -216,8 +223,8 @@ def train(
                 if no_improvement_count >= patience:
                     logger.info(f"Early stopping at epoch {epoch + 1}")
                     stop_training = True
-
-        scheduler.step(val_loss)
+        else:
+            scheduler.step(avg_train_loss, epoch=epoch + 1)
 
         # Log the time taken for this epoch
         epoch_time = time.time() - epoch_start_time
