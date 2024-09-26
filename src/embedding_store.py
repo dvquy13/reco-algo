@@ -47,6 +47,7 @@ class TorchEmbeddingStore:
                 "id_mapper": self.id_mapper,
                 "num_embeddings": self.embeddings.num_embeddings,
                 "embedding_dim": self.embeddings.embedding_dim,
+                "padding_idx": self.embeddings.padding_idx,
             },
             file_path,
         )
@@ -68,9 +69,10 @@ class TorchEmbeddingStore:
         # Retrieve num_embeddings and embedding_dim from the saved checkpoint
         num_embeddings = checkpoint["num_embeddings"]
         embedding_dim = checkpoint["embedding_dim"]
+        padding_idx = checkpoint["padding_idx"]
 
         # Recreate the Embedding layer
-        embeddings = Embedding(num_embeddings, embedding_dim)
+        embeddings = Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
         embeddings.load_state_dict(checkpoint["embedding_weights"])
 
         # Return an instance of TorchEmbeddingStore with loaded id_mapper and embeddings

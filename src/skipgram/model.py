@@ -9,8 +9,12 @@ from src.skipgram.dataset import SkipGramDataset
 class SkipGram(nn.Module):
     def __init__(self, num_items, embedding_dim):
         super().__init__()
-        self.embeddings = nn.Embedding(num_items, embedding_dim)
-        # nn.init.xavier_uniform_(self.embeddings.weight)
+        self.embeddings = nn.Embedding(
+            num_items + 1, embedding_dim, padding_idx=num_items
+        )
+        nn.init.xavier_uniform_(
+            self.embeddings.weight
+        )  # Same performance with less total training time
 
     def forward(self, target_items, context_items):
         """

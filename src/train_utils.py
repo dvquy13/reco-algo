@@ -111,9 +111,12 @@ def train(
     device = torch.device(device)
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=l2_reg)
+    # scheduler_patience = (
+    #     patience // 2
+    # )  # If equal or greater than early stopping patience then no use
     scheduler_patience = (
-        patience // 2
-    )  # If equal or greater than early stopping patience then no use
+        1  # This is like after 1 + 1 rounds of intolerable -> reduce the learning rate
+    )
     scheduler_factor = 0.3  # Andrew Ng magic learning rate step number
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, factor=scheduler_factor, patience=scheduler_patience

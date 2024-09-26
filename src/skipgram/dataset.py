@@ -23,6 +23,7 @@ class SkipGramDataset(Dataset):
         item_freq=defaultdict(int),
         window_size=2,
         negative_samples=5,
+        id_to_idx=None,
     ):
         """
         Args:
@@ -38,9 +39,13 @@ class SkipGramDataset(Dataset):
         self.window_size = window_size
         self.negative_samples = negative_samples
 
-        # Next two lines are to convert the input IDs into sequence integer for easier processing
-        self.id_to_idx = dict()
-        self.idx_to_id = dict()
+        # Convert the input IDs into sequence integer for easier processing
+        if id_to_idx is None:
+            self.id_to_idx = dict()
+            self.idx_to_id = dict()
+        else:
+            self.id_to_idx = id_to_idx
+            self.idx_to_id = {v: k for k, v in id_to_idx.items()}
 
         # Next two lines are used to map the index of __getitem__ to the sequence
         self.idx_to_seq = []

@@ -16,6 +16,7 @@ class SequenceRatingPrediction(nn.Module):
         num_users (int): The number of unique users.
         num_items (int): The number of unique items.
         embedding_dim (int): The size of the embedding dimension for both user and item embeddings.
+        item_embedding (torch.nn.Embedding): pretrained item embeddings. Defaults to None.
         dropout (float, optional): The dropout probability applied to the fully connected layers. Defaults to 0.2.
 
     Attributes:
@@ -33,6 +34,7 @@ class SequenceRatingPrediction(nn.Module):
         num_users,
         num_items,
         embedding_dim,
+        item_embedding=None,
         dropout=0.2,
     ):
         super().__init__()
@@ -40,15 +42,22 @@ class SequenceRatingPrediction(nn.Module):
         self.num_items = num_items
         self.num_users = num_users
 
-        # Item embedding (Add 1 to num_items for the unknown item (-1 padding))
-        self.item_embedding = nn.Embedding(
-            num_items + 1,  # One additional index for unknown/padding item
-            embedding_dim,
-            padding_idx=num_items,  # The additional index for the unknown item
-        )
+        self.item_embedding = item_embedding
+        if item_embedding is None:
+            # Item embedding (Add 1 to num_items for the unknown item (-1 padding))
+            self.item_embedding = nn.Embedding(
+                num_items + 1,  # One additional index for unknown/padding item
+                embedding_dim,
+                padding_idx=num_items,  # The additional index for the unknown item
+            )
 
         # User embedding
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
+
+        # GRU layer to process item sequences
+        self.gru = nn.GRU(
+            input_size=embedding_dim, hidden_size=embedding_dim, batch_first=True
+        )
 
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(p=dropout)
@@ -83,8 +92,14 @@ class SequenceRatingPrediction(nn.Module):
         embedded_seq = self.item_embedding(
             input_seq
         )  # Shape: [batch_size, seq_len, embedding_dim]
-        # Mean pooling: take the mean over the sequence dimension (dim=1)
-        pooled_output = embedded_seq.mean(dim=1)  # Shape: [batch_size, embedding_dim]
+
+        # GRU processing: output the hidden states and the final hidden state
+        _, hidden_state = self.gru(
+            embedded_seq
+        )  # hidden_state: [1, batch_size, embedding_dim]
+        gru_output = hidden_state.squeeze(
+            0
+        )  # Remove the sequence dimension -> [batch_size, embedding_dim]
 
         # Embed the target item
         embedded_target = self.item_embedding(
@@ -96,9 +111,9 @@ class SequenceRatingPrediction(nn.Module):
             user_ids
         )  # Shape: [batch_size, embedding_dim]
 
-        # Concatenate the pooled sequence output with the target item and user embeddings
+        # Concatenate the GRU output with the target item and user embeddings
         combined_embedding = torch.cat(
-            (pooled_output, embedded_target, user_embeddings), dim=1
+            (gru_output, embedded_target, user_embeddings), dim=1
         )  # Shape: [batch_size, embedding_dim*3]
 
         # Project combined embedding to rating prediction
