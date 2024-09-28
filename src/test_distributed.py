@@ -1,4 +1,5 @@
-# poetry run torchrun --nproc_per_node=4 --nnodes=1 --master_addr="localhost" --master_port=12345 src/test_distributed.py --epochs 50
+# poetry run torchrun --nproc_per_node=4 --nnodes=1 --master_addr="localhost" --master_port=12345 src/test_distributed.py --epochs 500 --device cpu
+# poetry run torchrun --nproc_per_node=2 --nnodes=1 --master_addr="localhost" --master_port=12345 src/test_distributed.py --epochs 500 --device cuda
 
 import argparse
 import os
@@ -42,28 +43,47 @@ def train(args):
     # Get rank and world size
     rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
+    local_rank = int(os.environ["LOCAL_RANK"])
 
-    # Initialize the process group
-    dist.init_process_group(backend="gloo")
+    # Initialize the process group based on device
+    backend = "nccl" if args.device == "cuda" else "gloo"
+    dist.init_process_group(backend=backend)
 
-    # Configure logger to include rank information
+    # Determine device type for logging
+    device_type = "GPU" if args.device == "cuda" else "CPU"
+
+    # Configure logger to display CPU or GPU instead of rank
     logger.remove()  # Remove default logger
     logger.add(
         sys.stderr,
-        format=f"<green>{{time}}</green> | <level>{{level}}</level> | Rank {rank} | <cyan>{{message}}</cyan>",
+        format=f"<green>{{time}}</green> | <level>{{level}}</level> | Device: {device_type} {rank} | <cyan>{{message}}</cyan>",
         level="INFO",
     )
 
-    logger.info(f"Starting training on rank {rank}. World size: {world_size}")
+    logger.info(
+        f"Starting training on device: {device_type}. World size: {world_size}, local rank: {local_rank}"
+    )
 
     # Set the seed for reproducibility
     torch.manual_seed(0)
 
-    # Create the model
-    model = ToyModel()
+    # Set the device based on the passed argument
+    if args.device == "cuda":
+        torch.cuda.set_device(local_rank)
+        device = torch.device(f"cuda:{local_rank}")
+        logger.info(f"Using GPU: cuda:{local_rank}")
+    else:
+        device = torch.device("cpu")
+        logger.info(f"Using CPU")
 
-    # Wrap the model with DDP
-    ddp_model = DDP(model)
+    # Create the model and move it to the correct device
+    model = ToyModel().to(device)
+
+    # Wrap the model with DDP, specifying the device if it's CUDA
+    if args.device == "cuda":
+        ddp_model = DDP(model, device_ids=[local_rank])
+    else:
+        ddp_model = DDP(model)  # No device_ids needed for CPU
 
     # Create dataset and distributed sampler
     dataset = RandomDataset(size=10, length=64)
@@ -71,7 +91,7 @@ def train(args):
     dataloader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler)
 
     # Loss function and optimizer
-    criterion = nn.MSELoss()
+    criterion = nn.MSELoss().to(device)
     optimizer = optim.SGD(ddp_model.parameters(), lr=0.01)
 
     # Training loop
@@ -79,6 +99,9 @@ def train(args):
         sampler.set_epoch(epoch)  # Shuffle data for each epoch
         epoch_loss = 0.0
         for batch_idx, (data, target) in enumerate(dataloader):
+            # Move data to the correct device
+            data, target = data.to(device), target.to(device)
+
             optimizer.zero_grad()
             output = ddp_model(data)
             loss = criterion(output, target)
@@ -99,7 +122,7 @@ def train(args):
             f"Epoch [{epoch+1}/{args.epochs}] completed. Average Loss: {avg_loss:.4f}"
         )
 
-    logger.info(f"Training completed on rank {rank}.")
+    logger.info(f"Training completed on device: {device_type}.")
 
     # Clean up
     dist.destroy_process_group()
@@ -115,6 +138,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--batch_size", type=int, default=16, help="batch size per process"
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda",
+        choices=["cpu", "cuda"],
+        help="Device to use for training (cpu or cuda)",
     )
     args = parser.parse_args()
 
