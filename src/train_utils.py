@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 from loguru import logger
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 
 from src.id_mapper import IDMapper
 
