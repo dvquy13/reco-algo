@@ -22,4 +22,3 @@ Try to implement some Recommendation Algorithm with PyTorch to learn both.
 
 ## Try Item2Vec modeling to learn item embeddings
 - Run notebooks 020 to 025
-- 
